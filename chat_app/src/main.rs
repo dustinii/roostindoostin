@@ -1,9 +1,21 @@
-use actix::{Actor, StreamHandler};
-use actix_web::{web, App, Error, HttpRequest, HttpServer, Responder, HttpResponse};
-use actix_web_actors::ws;
+#[macro_use]
+extern crate diesel;
+extern crate dotenv;
 
+use actix::{Actor, StreamHandler};
+use actix_web::{web, App, Error, HttpRequest, Responder, HttpResponse, HttpServer};
+use actix_web_actors::ws;
 use bcrypt::{hash, verify};
+use diesel::prelude::*;
+use diesel::pg::PgConnection;
+use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::env;
+use std::sync::Mutex;
+
+pub mod schema;
+pub mod models;
 
 // User model
 #[derive(Debug, Serialize, Deserialize)]
@@ -13,12 +25,23 @@ struct User {
     password_hash: String,
 }
 
-// Dummy in-memory database for demonstration
-use std::collections::HashMap;
-use std::sync::Mutex;
-
+// Dummy in-memory database (to be replaced with real database interactions)
 lazy_static::lazy_static! {
     static ref USERS: Mutex<HashMap<String, User>> = Mutex::new(HashMap::new());
+}
+
+// Function to establish a connection to the PostgreSQL database
+pub fn establish_connection() -> PgConnection {
+    dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    PgConnection::establish(&database_url)
+        .expect(&format!("Error connecting to {}", database_url))
+}
+
+async fn greet() -> impl Responder {
+    "Hello, RUSTin!"
 }
 
 // Function to hash password
@@ -33,7 +56,7 @@ fn verify_password(hash: &str, password: &str) -> bool {
 
 // Registration handler
 async fn register_user(user: web::Json<User>) -> impl Responder {
-    let password_hash = hash_password(&user.password_hash);
+    let password_hash = hash(&user.password_hash, 4).unwrap();
     let new_user = User {
         username: user.username.clone(),
         email: user.email.clone(),
@@ -50,7 +73,7 @@ async fn register_user(user: web::Json<User>) -> impl Responder {
 async fn login_user(credentials: web::Json<User>) -> impl Responder {
     let users = USERS.lock().unwrap();
     match users.get(&credentials.username) {
-        Some(user) if verify_password(&user.password_hash, &credentials.password_hash) => {
+        Some(user) if verify(&user.password_hash, &credentials.password_hash).unwrap() => {
             HttpResponse::Ok().body("Logged in successfully")
         },
         _ => HttpResponse::BadRequest().body("Invalid username or password"),
@@ -80,6 +103,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatWebSocket {
 async fn chat_ws_route(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
     ws::start(ChatWebSocket {}, &req, stream)
 }
+
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

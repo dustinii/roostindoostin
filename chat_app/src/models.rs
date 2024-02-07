@@ -9,13 +9,14 @@ pub struct User {
     pub password_hash: String,
 }
 
-#[derive(Insertable, Serialize, Deserialize)]
+#[derive(Insertable, Deserialize)]
 #[table_name = "users"]
-pub struct NewUser<'a> {
-    pub username: &'a str,
-    pub email: &'a str,
-    pub password_hash: &'a str,
+pub struct NewUser {
+    pub username: String,
+    pub email: String,
+    pub password_hash: String,
 }
+
 
 #[derive(Queryable, Serialize, Deserialize)]
 pub struct Message {

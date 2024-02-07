@@ -6,18 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix = "0.12"
-actix-web = "4.0"
-actix-web-actors = "4.0"
-actix-rt = "2.4"
-bcrypt = "0.8.0"
-chrono = "0.4"
-diesel = { version = "1.4.5", features = ["postgres"] }
-dotenv = "0.15.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-lazy_static = "1.4"
-
-
-thiserror = "1.0"  # For custom error types
-tokio = { version = "1", features = ["full"] }
+actix-web = "4.5.1"  # Use the latest compatible version
+actix-web-actors = "4.3.0"  # For WebSocket support
+actix = "0.13.2"  # Core Actix framework
+actix-rt = "2.4.0"  # Actix runtime
+bcrypt = "0.8.0"  # For password hashing
+chrono = { version = "0.4", features = ["serde"] }  # For time and date handling
+diesel = { version = "1.4.5", features = ["postgres"] }  # ORM and PostgreSQL support
+dotenv = "0.15.0"  # Load environment variables from .env file
+serde = { version = "1.0", features = ["derive"] }  # Serialization/deserialization
+serde_json = "1.0"  # JSON support
+lazy_static = "1.4.0"  # For static variables
+tokio = { version = "1", features = ["full"] }  # Async runtime

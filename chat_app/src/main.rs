@@ -2,46 +2,27 @@
 extern crate diesel;
 extern crate dotenv;
 
-use actix::{Actor, Context, StreamHandler};
-use actix_web::{web, App, Error, HttpRequest, Responder, HttpResponse, HttpServer};
+use actix::{prelude::*, Actor, StreamHandler};
+use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
 use bcrypt::{hash, verify};
-use diesel::prelude::*;
 use diesel::pg::PgConnection;
+use diesel::prelude::*;
 use dotenv::dotenv;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::env;
-use std::sync::Mutex;
 
-pub mod schema;
 pub mod models;
+pub mod schema;
 
-// User model
-#[derive(Debug, Serialize, Deserialize)]
-struct User {
-    username: String,
-    email: String,
-    password_hash: String,
-}
-
-// Dummy in-memory database (to be replaced with real database interactions)
-lazy_static::lazy_static! {
-    static ref USERS: Mutex<HashMap<String, User>> = Mutex::new(HashMap::new());
-}
+// Use the User struct from models
+use crate::models::{NewUser, User};
+use crate::schema::users;
 
 // Function to establish a connection to the PostgreSQL database
 pub fn establish_connection() -> PgConnection {
     dotenv().ok();
-
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    PgConnection::establish(&database_url)
-        .expect(&format!("Error connecting to {}", database_url))
-}
-
-async fn greet() -> impl Responder {
-    "Hello, RUSTin!"
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    PgConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
 }
 
 // Function to hash password
@@ -55,34 +36,65 @@ fn verify_password(hash: &str, password: &str) -> bool {
 }
 
 // Registration handler
-async fn register_user(user: web::Json<User>) -> impl Responder {
-    let password_hash = hash(&user.password_hash, 4).unwrap();
-    let new_user = User {
-        username: user.username.clone(),
-        email: user.email.clone(),
-        password_hash,
+async fn register_user(user_data: web::Json<NewUser>) -> impl Responder {
+    let conn = establish_connection();
+
+    // Hash the password
+    let hashed_password = hash_password(&user_data.password_hash);
+
+    // Create a new user
+    let new_user = NewUser {
+        username: user_data.username.clone(),
+        email: user_data.email.clone(),
+        password_hash: hashed_password,
     };
 
-    let mut users = USERS.lock().unwrap();
-    users.insert(new_user.username.clone(), new_user);
-
-    HttpResponse::Ok().body("User registered successfully")
+    // Insert new user into the database
+    match diesel::insert_into(users::table)
+        .values(&new_user)
+        .execute(&conn)
+    {
+        Ok(_) => HttpResponse::Ok().body("User created"),
+        Err(e) => {
+            eprintln!("Failed to create user: {:?}", e);
+            HttpResponse::InternalServerError().json("Error creating user")
+        }
+    }
 }
 
 // Login handler
-async fn login_user(credentials: web::Json<User>) -> impl Responder {
-    let users = USERS.lock().unwrap();
-    match users.get(&credentials.username) {
-        Some(user) if verify(&user.password_hash, &credentials.password_hash).unwrap() => {
-            HttpResponse::Ok().body("Logged in successfully")
-        },
-        _ => HttpResponse::BadRequest().body("Invalid username or password"),
-    }
+async fn login_user(_credentials: web::Json<User>) -> impl Responder {
+    let _conn = establish_connection();
+    // Add logic to verify the user credentials from the database
+    HttpResponse::Ok().body("Logged in successfully")
+}
+
+// Handler for GET request to fetch all users
+async fn get_all_users() -> impl Responder {
+    use crate::schema::users::dsl::*;
+
+    let connection = establish_connection();
+    let user_list = users
+        .load::<User>(&connection)
+        .expect("Error loading users");
+
+    let user_info: Vec<_> = user_list
+        .iter()
+        .map(|user| (user.username.clone(), user.email.clone()))
+        .collect();
+
+    HttpResponse::Ok().json(user_info)
+}
+
+// WebSocket route handler
+async fn chat_ws_route(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
+    ws::start(ChatWebSocket {}, &req, stream)
 }
 
 // Define a WebSocket actor for handling incoming WebSocket messages
 struct ChatWebSocket;
 
+// Implement Actor trait for ChatWebSocket
 impl Actor for ChatWebSocket {
     type Context = ws::WebsocketContext<Self>;
 }
@@ -92,26 +104,25 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatWebSocket {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
-            Ok(ws::Message::Text(text)) => ctx.text(text), // Echo the text received
-            Ok(ws::Message::Binary(bin)) => ctx.binary(bin), // Echo binary data
-            Ok(ws::Message::Close(_)) => ctx.stop(), // Stop the actor
+            Ok(ws::Message::Text(text)) => ctx.text(text),
+            Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
+            Ok(ws::Message::Close(_)) => ctx.stop(),
             _ => (),
         }
     }
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        println!("WebSocket connected");
+    }
+    fn finished(&mut self, _ctx: &mut Self::Context) {
+        println!("WebSocket disconnected");
+    }
 }
-
-// WebSocket route handler
-async fn chat_ws_route(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    ws::start(ChatWebSocket {}, &req, stream)
-}
-
-
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
-            .route("/", web::get().to(greet))
+            .route("/users", web::get().to(get_all_users))
             .route("/register", web::post().to(register_user))
             .route("/login", web::post().to(login_user))
             .route("/ws/", web::get().to(chat_ws_route))

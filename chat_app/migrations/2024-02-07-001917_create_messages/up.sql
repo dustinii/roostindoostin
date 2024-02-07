@@ -1,0 +1,7 @@
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);

@@ -20,3 +20,10 @@ Design and integrate DB
 -db setup
 -create db models and schema
 -integrate db w actix-web
+~~~
+Front-End Development Integration
+-Front-End Framework
+-Set Up React
+-build user interface
+-connect to backend
+-handle websocket communication

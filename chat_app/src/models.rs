@@ -32,3 +32,9 @@ pub struct NewMessage<'a> {
     pub user_id: i32,
     pub content: &'a str,
 }
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}

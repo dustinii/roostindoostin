@@ -15,7 +15,7 @@ pub mod models;
 pub mod schema;
 
 // Use the User struct from models
-use crate::models::{NewUser, User};
+use crate::models::{NewUser, User, LoginRequest};
 use crate::schema::users;
 
 // Function to establish a connection to the PostgreSQL database
@@ -63,10 +63,22 @@ async fn register_user(user_data: web::Json<NewUser>) -> impl Responder {
 }
 
 // Login handler
-async fn login_user(_credentials: web::Json<User>) -> impl Responder {
-    let _conn = establish_connection();
-    // Add logic to verify the user credentials from the database
-    HttpResponse::Ok().body("Logged in successfully")
+async fn login_user(credentials: web::Json<LoginRequest>) -> impl Responder {
+    use crate::schema::users::dsl::*;
+    let conn = establish_connection();
+
+    // Fetch the user from the database
+    match users.filter(username.eq(&credentials.0.username)).first::<User>(&conn) {
+        Ok(user) => {
+            // Verify the password
+            if verify_password(&user.password_hash, &credentials.password) {
+                HttpResponse::Ok().body("Logged in successfully")
+            } else {
+                HttpResponse::BadRequest().body("Invalid username or password")
+            }
+        },
+        Err(_) => HttpResponse::BadRequest().body("Invalid username or password"),
+    }
 }
 
 // Handler for GET request to fetch all users
